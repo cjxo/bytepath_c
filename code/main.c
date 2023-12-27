@@ -55,6 +55,10 @@ OS_Sleep(u64 milliseconds)
 typedef enum Key_Code
 {
     KeyCode_Escape,
+    KeyCode_LeftArrow,
+    KeyCode_UpArrow,
+    KeyCode_RightArrow,
+    KeyCode_DownArrow,
     KeyCode_Total
 } Key_Code;
 
@@ -93,6 +97,26 @@ W32_MapWParamToKeyCode(WPARAM wparam)
         case VK_ESCAPE:
         {
             result = KeyCode_Escape;
+        } break;
+        
+        case VK_LEFT:
+        {
+            result = KeyCode_LeftArrow;
+        } break;
+        
+        case VK_UP:
+        {
+            result = KeyCode_UpArrow;
+        } break;
+        
+        case VK_RIGHT:
+        {
+            result = KeyCode_RightArrow;
+        } break;
+        
+        case VK_DOWN:
+        {
+            result = KeyCode_DownArrow;
         } break;
         
         default:
@@ -176,7 +200,7 @@ W32_SecondsBetweenTicksF32(u64 start, u64 end)
 }
 
 inline s32
-W32_GetRefreshMonitorRefreshRate(HWND window_handle)
+W32_GetMonitorRefreshRate(HWND window_handle)
 {
     HDC dc = GetDC(window_handle);
     s32 result = GetDeviceCaps(dc, VREFRESH);
@@ -319,8 +343,8 @@ D3D11_AcquireSwapChain(HWND window_handle, ID3D11Device1 *device1)
             {
                 
                 DXGI_SWAP_CHAIN_DESC1 swap_chain_desc1;
-                swap_chain_desc1.Width = 800;
-                swap_chain_desc1.Height = 450;
+                swap_chain_desc1.Width = 480;
+                swap_chain_desc1.Height = 270;
                 swap_chain_desc1.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
                 swap_chain_desc1.Stereo = FALSE;
                 swap_chain_desc1.SampleDesc.Count = 1;
@@ -330,8 +354,8 @@ D3D11_AcquireSwapChain(HWND window_handle, ID3D11Device1 *device1)
                 swap_chain_desc1.Scaling = DXGI_SCALING_STRETCH;
                 swap_chain_desc1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
                 swap_chain_desc1.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+                //swap_chain_desc1.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
                 swap_chain_desc1.Flags = 0;
-                
                 hresult = IDXGIFactory2_CreateSwapChainForHwnd(dxgi_factory, (IUnknown *)device1, window_handle, &swap_chain_desc1,
                                                                null, null, &result);
                 
@@ -351,81 +375,6 @@ D3D11_AcquireSwapChain(HWND window_handle, ID3D11Device1 *device1)
     return(result);
 }
 
-typedef union v2f
-{
-    struct
-    {
-        f32 x, y;
-    };
-    f32 v[2];
-} v2f;
-
-typedef union v4f
-{
-    struct
-    {
-        f32 x, y, z, w;
-    };
-    struct
-    {
-        f32 r, g, b, a;
-    };
-    struct
-    {
-        v2f xy;
-        v2f zw;
-    };
-    f32 v[4];
-} v4f;
-
-typedef union m44
-{
-    struct
-    {
-        v4f r0, r1, r2, r3;
-    };
-    f32 m[4][4];
-} m44;
-
-typedef struct Quad
-{
-    v2f origin;
-    v2f x_axis;
-    v2f y_axis;
-    v4f colours[4];
-    
-    f32 side_roundness;
-    f32 side_thickness;
-} Quad;
-
-#define V2F(x,y) (v2f){x,y}
-#define V4F(x,y,z,w) (v4f){x,y,z,w}
-#define RGBA(r,g,b,a) V4F(r,g,b,a)
-
-function m44
-Matrix4x4_Orthographic_LH_RM_Z01(f32 left, f32 right, f32 top,
-                                 f32 bottom, f32 near, f32 far)
-{
-    m44 result;
-    result.r0 = V4F(2.0f / (right - left), 0.0f, 0.0f, 0.0f);
-    result.r1 = V4F(0.0f, 2.0f / (top - bottom), 0.0f, 0.0f);
-    result.r2 = V4F(0.0f, 0.0f, 1.0f / (far - near), 0.0f);
-    result.r3 = V4F(-(right + left) / (right - left), -(top + bottom) / (top - bottom) , -near / (far - near), 1.0f);
-    return(result);
-}
-
-function m44
-Matrix4x4_Orthographic_LH_CM_Z01(f32 left, f32 right, f32 top,
-                                 f32 bottom, f32 near, f32 far)
-{
-    m44 result;
-    result.r0 = V4F(2.0f / (right - left), 0.0f, 0.0f, -(right + left) / (right - left));
-    result.r1 = V4F(0.0f, 2.0f / (top - bottom), 0.0f, -(top + bottom) / (top - bottom));
-    result.r2 = V4F(0.0f, 0.0f, 1.0f / (far - near), -near / (far - near));
-    result.r3 = V4F(0.0f, 0.0f , 0.0f, 1.0f);
-    return(result);
-}
-
 #define maximum_quads 4096
 typedef struct Quad_Render_Batch
 {
@@ -434,7 +383,7 @@ typedef struct Quad_Render_Batch
 } Quad_Render_Batch;
 
 inline Quad *
-RenderBatch_Acquire(Quad_Render_Batch *render_batch)
+QuadRenderBatch_Acquire(Quad_Render_Batch *render_batch)
 {
     Assert(render_batch->quads_drawn < maximum_quads);
     Quad *result = render_batch->quads + render_batch->quads_drawn++;
@@ -442,11 +391,11 @@ RenderBatch_Acquire(Quad_Render_Batch *render_batch)
 }
 
 inline Quad *
-RenderBatch_Push(Quad_Render_Batch *render_batch, v2f origin, v2f x_axis, v2f y_axis,
-                 v4f colour_tl, v4f colour_tr, v4f colour_br, v4f colour_bl, f32 side_roundness,
-                 f32 side_thickness)
+QuadRenderBatch_Push(Quad_Render_Batch *render_batch, v2f origin, v2f x_axis, v2f y_axis,
+                     v4f colour_tl, v4f colour_tr, v4f colour_br, v4f colour_bl, f32 side_roundness,
+                     f32 side_thickness)
 {
-    Quad *quad = RenderBatch_Acquire(render_batch);
+    Quad *quad = QuadRenderBatch_Acquire(render_batch);
     quad->origin = origin;
     quad->x_axis = x_axis;
     quad->y_axis = y_axis;
@@ -460,127 +409,206 @@ RenderBatch_Push(Quad_Render_Batch *render_batch, v2f origin, v2f x_axis, v2f y_
 }
 
 inline Quad *
-RenderBatch_PushRectFilled(Quad_Render_Batch *render_batch,
-                           v2f origin, v2f dims,
-                           v4f colour, f32 roundness)
+QuadRenderBatch_PushRectFilled(Quad_Render_Batch *render_batch,
+                               v2f origin, v2f dims,
+                               v4f colour, f32 roundness)
 {
-    return RenderBatch_Push(render_batch, origin, V2F(dims.x, 0.0f), V2F(0.0f, dims.y),
-                            colour, colour, colour, colour, roundness, 0.0f);
+    return QuadRenderBatch_Push(render_batch, origin, V2F(dims.x, 0.0f), V2F(0.0f, dims.y),
+                                colour, colour, colour, colour, roundness, 0.0f);
 }
 
 inline Quad *
-RenderBatch_PushRectOutline(Quad_Render_Batch *render_batch,
-                            v2f origin, v2f dims,
-                            v4f colour, f32 roundness, f32 thickness)
+QuadRenderBatch_PushRectOutline(Quad_Render_Batch *render_batch,
+                                v2f origin, v2f dims,
+                                v4f colour, f32 roundness, f32 thickness)
 {
-    return RenderBatch_Push(render_batch, origin, V2F(dims.x, 0.0f), V2F(0.0f, dims.y),
-                            colour, colour, colour, colour, roundness, thickness);
+    return QuadRenderBatch_Push(render_batch, origin, V2F(dims.x, 0.0f), V2F(0.0f, dims.y),
+                                colour, colour, colour, colour, roundness, thickness);
 }
 
 inline Quad *
-RenderBatch_PushCircleFilled(Quad_Render_Batch *render_batch,
-                             v2f origin, v4f colour, f32 radius)
+QuadRenderBatch_PushCircleFilled(Quad_Render_Batch *render_batch,
+                                 v2f origin, v4f colour, f32 radius)
 {
-    return RenderBatch_PushRectFilled(render_batch,
-                                      V2F(origin.x - radius, origin.y - radius),
-                                      V2F(radius * 2.0f, radius * 2.0f),
-                                      colour, radius);
+    return QuadRenderBatch_PushRectFilled(render_batch,
+                                          V2F(origin.x - radius, origin.y - radius),
+                                          V2F(radius * 2.0f, radius * 2.0f),
+                                          colour, radius);
 }
 
 inline Quad *
-RenderBatch_PushCircleOutline(Quad_Render_Batch *render_batch,
-                              v2f origin, v4f colour, f32 radius, f32 thickness)
+QuadRenderBatch_PushCircleOutline(Quad_Render_Batch *render_batch,
+                                  v2f origin, v4f colour, f32 radius, f32 thickness)
 {
-    return RenderBatch_PushRectOutline(render_batch,
-                                       V2F(origin.x - radius, origin.y - radius),
-                                       V2F(radius * 2.0f, radius * 2.0f),
-                                       colour, radius, thickness);
+    return QuadRenderBatch_PushRectOutline(render_batch,
+                                           V2F(origin.x - radius, origin.y - radius),
+                                           V2F(radius * 2.0f, radius * 2.0f),
+                                           colour, radius, thickness);
 }
 
-// TODO(christian): UTF-16 variant
-function String_Decode
-StringDecode_UTF8(u8 *str, u32 capacity)
-{
-    String_Decode result = { 0, 0 };
-    
-    local const u8 lengths_table[] = 
-    {
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        2, 2, 2, 2, 3, 3, 4, 0
-    };
-    
-    local const u8 masks_table_based_on_length[] =
-    {
-        0x00, 0x7F, 0x1F, 0x0F, 0x07,
-    };
-    
-    local const u8 shifts_back_table_based_on_length[] =
-    {
-        0, 18, 12, 6, 0
-    };
-    
-    result.byte_count = lengths_table[str[0] >> 3];
-    result.next_in_str = str + result.byte_count + !result.byte_count;
-    
-    result.codepoint = (u32)(str[0] & masks_table_based_on_length[result.byte_count]) << 18u;
-    result.codepoint |= (u32)(str[1] & 0x3F) << 12u;
-    result.codepoint |= (u32)(str[2] & 0x3F) << 6u;
-    result.codepoint |= (u32)(str[3] & 0x3F) << 0u;
-    result.codepoint >>= shifts_back_table_based_on_length[result.byte_count];
-    
-    return(result);
-}
+// TODO(christian): immediate mode rending api.
+/*
+we cannot limit ourselves with quads. we want to draw convex / nonconvex polygons,
+lines, triangles, and so on. We might leave the quad rendering batch for the UI system.
+knowing this, we do instanced rendering for quad rendering, and issue draw calls for
+immediate rendering
 
-// TODO(christian): UTF-16 variant
-function u32
-StringEncode_UTF8(u8 *dest, u32 codepoint)
+// we also cannot just say "draw line" or "draw triangle" becasue how would d3d11 interpret
+that? we need some sort of "draw call" struct that records what of primitive we have drawn.
+and thus we input the number of vertices used to d3d. we also might want an index to the vertices
+array in render_batch
+*/
+
+typedef enum Render_Primitive_Kind
 {
-    u32 byte_count_result = 0;
+    RenderPrimitiveKind_None,
+    RenderPrimitiveKind_Point, // 1 vertices. D3D11_PRIMITIVE_TOPOLOGY_POINTLIST.
+    RenderPrimitiveKind_Line, // 2 vertices. use D3D11_PRIMITIVE_TOPOLOGY_LINELIST / D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP.
+    RenderPrimitiveKind_Triangle, // 3 vertices. D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP / D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+    RenderPrimitiveKind_Quad, // 4 vertices. Use D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP
+} Render_Primitive_Kind;
+
+typedef struct Render_Per_Vertex_Data
+{
+    v2f vertex;
+    v4f colour;
+} Render_Per_Vertex_Data;
+
+typedef struct Render_Draw_Call
+{
+    Render_Primitive_Kind primitive_kind;
+    u32 vertex_array_base_index;
+    u32 vertex_array_end_index;
+    b32 filled;
+} Render_Draw_Call;
+
+// TODO(christian): no stack allocate
+#define max_draw_calls 2048
+#define max_vertices 8192
+typedef struct Render_Batch
+{
+    Render_Draw_Call draw_calls[max_draw_calls];
+    u32 draw_call_count;
     
-    if (codepoint < 0xFFu)
+    Render_Per_Vertex_Data vertices[max_vertices];
+    u32 vertex_count;
+    
+    b32 has_begun;
+    b32 filled;
+    Render_Primitive_Kind current_primitive;
+    u32 current_vertex_array_start;
+    v4f current_colour;
+} Render_Batch;
+
+inline void
+RenderBatch_BeginPrimitive(Render_Batch *render_batch, Render_Primitive_Kind kind, b32 filled)
+{
+    AssertFalse(render_batch->has_begun);
+    AssertTrue(render_batch->draw_call_count < max_draw_calls);
+    render_batch->has_begun = True;
+    render_batch->current_primitive = kind;
+    render_batch->current_vertex_array_start = render_batch->vertex_count;
+    if (kind != RenderPrimitiveKind_Line)
     {
-        dest[0] = (u8)codepoint;
-        byte_count_result = 1;
+        render_batch->filled = filled;
     }
-    else if (codepoint < (0xFFFu))
+    else
     {
-        dest[0] = (u8)((codepoint >> 6) | 0xC0);
-        dest[1] = (u8)((codepoint & 0x3F) | 0x80);
-        byte_count_result = 2;
+        render_batch->filled = True;
     }
-    else if (codepoint < 0xFFFFu)
+}
+
+inline void
+RenderBatch_End(Render_Batch *render_batch)
+{
+    AssertTrue(render_batch->has_begun);
+    AssertTrue(render_batch->draw_call_count < max_draw_calls);
+    AssertTrue(render_batch->current_primitive != RenderPrimitiveKind_None);
+    AssertTrue(render_batch->current_vertex_array_start != bad_index_u32);
+    
+    // NOTE(christian): did we pushed something?
+    if (render_batch->current_vertex_array_start < render_batch->vertex_count)
     {
-        dest[0] = (u8)((codepoint >> 12) | 0xE0);
-        dest[1] = (u8)(((codepoint >> 6) & 0x3F) | 0x80);
-        dest[2] = (u8)(((codepoint >> 0) & 0x3F) | 0x80);
-        byte_count_result = 3;
-    } else if (codepoint < 0x200000u)
-    {
-        dest[0] = (u8)((codepoint >> 18) | 0xF0);
-        dest[1] = (u8)(((codepoint >> 12) & 0x3F) | 0x80);
-        dest[2] = (u8)(((codepoint >> 6) & 0x3F) | 0x80);
-        dest[3] = (u8)(((codepoint >> 0) & 0x3F) | 0x80);
-        byte_count_result = 4;
+        // NOTE(christian): then new draw call!
+        render_batch->has_begun = False;
+        
+        Render_Draw_Call *draw_call = render_batch->draw_calls + render_batch->draw_call_count++;
+        draw_call->primitive_kind = render_batch->current_primitive;
+        draw_call->vertex_array_base_index = render_batch->current_vertex_array_start;
+        draw_call->vertex_array_end_index = render_batch->vertex_count;
+        draw_call->filled = render_batch->filled;
     }
     
-    return(byte_count_result);
+    render_batch->current_primitive = RenderPrimitiveKind_None;
+    render_batch->current_vertex_array_start = bad_index_u32;
+    render_batch->filled = False;
 }
 
-function f32
-EaseOutQuart(f32 t)
+inline v4f
+RenderBatch_Colour(Render_Batch *render_batch, v4f colour)
 {
-    f32 result = 1.0f - powf(1.0f - t, 4.0f);
-    return(result);
+    v4f old = render_batch->current_colour;
+    render_batch->current_colour = colour;
+    return(old);
 }
 
-function f32
-EaseInQuart(f32 t)
+inline void
+RenderBatch_Vertex(Render_Batch *render_batch, v2f v)
 {
-    f32 result = t * t * t * t;
-    return(result);
+    Assert(render_batch->vertex_count < max_vertices);
+    AssertTrue(render_batch->has_begun);
+    Render_Per_Vertex_Data *vertex = render_batch->vertices + render_batch->vertex_count++;
+    vertex->vertex = v;
+    vertex->colour = render_batch->current_colour;
 }
+
+function void
+RenderBatch_PushLine(Render_Batch *render_batch, v2f start, v2f end, v4f colour)
+{
+    Render_Draw_Call draw_call;
+    draw_call.primitive_kind = RenderPrimitiveKind_Line;
+    draw_call.vertex_array_base_index = render_batch->vertex_count;
+    
+    render_batch->draw_calls[render_batch->draw_call_count++] = draw_call;
+    
+    
+    Render_Per_Vertex_Data *vertex = render_batch->vertices + render_batch->vertex_count;
+    render_batch->vertex_count += 2;
+    
+    vertex->vertex = start;
+    vertex->colour = colour;
+    
+    ++vertex;
+    
+    vertex->vertex = end;
+    vertex->colour = colour;
+}
+
+// TODO(christian): this is bad in performance (alot of trigonom).... do midpoint or cache the sin cos and scale
+function void
+RenderBatch_PushCircleOutline(Render_Batch *render_batch, v2f origin, v4f colour, f32 radius)
+{
+    RenderBatch_BeginPrimitive(render_batch, RenderPrimitiveKind_Line, True);
+    v4f old = RenderBatch_Colour(render_batch, colour);
+    
+    f32 theta_step = 0.01745329251f * 6.0f; // 6 degrees
+    
+    for (f32 theta = 0; theta <= two_pi_F32; theta += theta_step)
+    {
+        RenderBatch_Vertex(render_batch, V2F(radius * cosf(theta) + origin.x, radius * sinf(theta) + origin.y));
+    }
+    
+    RenderBatch_Colour(render_batch, old);
+    RenderBatch_End(render_batch);
+}
+
+typedef struct Memory_Arena
+{
+    u8 *memory;
+    u64 capacity;
+    u64 stack_ptr;
+    u64 commit_ptr;
+} Memory_Arena;
 
 s32 main(void)
 {
@@ -607,7 +635,7 @@ s32 main(void)
             w32_ticks_per_second = (u64)ticks_per_second_li.QuadPart;
         }
         
-        const s32 refresh_rate = W32_GetRefreshMonitorRefreshRate(window_handle);
+        const s32 refresh_rate = W32_GetMonitorRefreshRate(window_handle);
         const f32 seconds_per_frame = 1.0f / (f32)refresh_rate;
         const f32 delta_time = seconds_per_frame;
         
@@ -618,6 +646,7 @@ s32 main(void)
         ID3D11Texture2D *back_buffer = null;
         ID3D11RenderTargetView *render_target_view = null;
         ID3D11RasterizerState1 *fill_no_cull_rasterizer_state = null;
+        ID3D11RasterizerState1 *wire_no_cull_rasterizer_state = null;
         ID3D11BlendState *render_blend_state = null;
         
         ID3D11VertexShader *main_vertex_shader = null;
@@ -625,6 +654,11 @@ s32 main(void)
         ID3D11Buffer *quad_sb = null;
         ID3D11ShaderResourceView *quad_srv = null;
         ID3D11Buffer *quad_renderer_constants = null;
+        
+        ID3D11VertexShader *immediate_vertex_shader = null;
+        ID3D11PixelShader *immediate_pixel_shader = null;
+        ID3D11Buffer *render_batch_vertex_buffer = null;
+        ID3D11InputLayout *render_batch_input_layout = null;
         
         D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
         HRESULT hresult = D3D11CreateDevice(null, D3D_DRIVER_TYPE_HARDWARE, null, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG,
@@ -694,6 +728,66 @@ s32 main(void)
                 Assert(0);
             }
             
+            //~
+            D3DCompileFromFile(L"..\\data\\shaders\\immediate_render.hlsl", null, null, "VSMain",
+                               "vs_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0,
+                               &bytecode_blob, &error_blob);
+            
+            if (!error_blob)
+            {
+                ID3D11Device1_CreateVertexShader(main_device, ID3D10Blob_GetBufferPointer(bytecode_blob),
+                                                 ID3D10Blob_GetBufferSize(bytecode_blob), null,
+                                                 &immediate_vertex_shader);
+                
+                
+                D3D11_INPUT_ELEMENT_DESC input_laypout_desc[] = 
+                {
+                    (D3D11_INPUT_ELEMENT_DESC){
+                        "Vertex", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0
+                    },
+                    (D3D11_INPUT_ELEMENT_DESC){
+                        "Colour", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0
+                    }
+                };
+                
+                ID3D11Device1_CreateInputLayout(main_device, input_laypout_desc, 2, ID3D10Blob_GetBufferPointer(bytecode_blob),
+                                                ID3D10Blob_GetBufferSize(bytecode_blob), &render_batch_input_layout);
+                
+                ID3D10Blob_Release(bytecode_blob);
+                bytecode_blob = null;
+            }
+            else
+            {
+                printf(ID3D10Blob_GetBufferPointer(error_blob));
+                ID3D10Blob_Release(error_blob);
+                error_blob = null;
+                
+                Assert(0);
+            }
+            
+            D3DCompileFromFile(L"..\\data\\shaders\\immediate_render.hlsl", null, null, "PSMain",
+                               "ps_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0,
+                               &bytecode_blob, &error_blob);
+            
+            if (!error_blob)
+            {
+                ID3D11Device1_CreatePixelShader(main_device, ID3D10Blob_GetBufferPointer(bytecode_blob),
+                                                ID3D10Blob_GetBufferSize(bytecode_blob), null,
+                                                &immediate_pixel_shader);
+                
+                ID3D10Blob_Release(bytecode_blob);
+                bytecode_blob = null;
+            }
+            else
+            {
+                printf(ID3D10Blob_GetBufferPointer(error_blob));
+                ID3D10Blob_Release(error_blob);
+                error_blob = null;
+                
+                Assert(0);
+            }
+            
+            //~
             D3D11_RASTERIZER_DESC1 raster_desc1;
             raster_desc1.FillMode = D3D11_FILL_SOLID;
             raster_desc1.CullMode = D3D11_CULL_NONE;
@@ -708,6 +802,9 @@ s32 main(void)
             raster_desc1.ForcedSampleCount = FALSE;
             ID3D11Device1_CreateRasterizerState1(main_device, &raster_desc1, &fill_no_cull_rasterizer_state);
             
+            raster_desc1.FillMode = D3D11_FILL_WIREFRAME;
+            ID3D11Device1_CreateRasterizerState1(main_device, &raster_desc1, &wire_no_cull_rasterizer_state);
+            
             D3D11_BLEND_DESC blend_desc = {0};
             blend_desc.AlphaToCoverageEnable = FALSE;
             blend_desc.IndependentBlendEnable = FALSE;
@@ -716,12 +813,26 @@ s32 main(void)
             blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
             blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
             blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-            blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+            blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
             blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
             blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
             ID3D11Device1_CreateBlendState(main_device, &blend_desc, &render_blend_state);
         }
         
+        //~ NOTE(christian): general rendering
+        
+        D3D11_BUFFER_DESC vertex_buffer_desc;
+        vertex_buffer_desc.ByteWidth = sizeof(Render_Per_Vertex_Data) * 512; // max 1024 vertices
+        vertex_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+        vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        vertex_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        vertex_buffer_desc.MiscFlags = 0;
+        vertex_buffer_desc.StructureByteStride = 0;
+        
+        ID3D11Device1_CreateBuffer(main_device, &vertex_buffer_desc, null, 
+                                   &render_batch_vertex_buffer);
+        
+        //~ NOTE(christian): quad rendering
         D3D11_BUFFER_DESC quad_sb_desc;
         quad_sb_desc.ByteWidth = maximum_quads * sizeof(Quad);
         quad_sb_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -762,23 +873,92 @@ s32 main(void)
         SeedRandom_U32((u32)time(null));
         u64 begin_ticks = W32_GetTicks();
         
+        Render_Batch render_batch = {0};
+        
+        // NOTE(christian): our ship has 0 accel. constant velocity.
+        f32 circle_theta_angle_radians = 0.0f;
+        f32 circle_speed = 40.0f;
+        v2f circle_p = V2F(viewport.Width * 0.5f, viewport.Height * 0.5f);
         while (!OS_InputFlagGet(InputFlag_Quit))
         {
             quad_render_batch.quads_drawn = 0;
+            render_batch.draw_call_count = 0;
+            render_batch.vertex_count = 0;
             W32_FillEvents();
             if (OS_KeyReleased(KeyCode_Escape))
             {
                 OS_InputFlagSet(InputFlag_Quit, True);
             }
             
-            RenderBatch_PushCircleOutline(&quad_render_batch, V2F(viewport.Width * 0.5f, viewport.Height * 0.5f),
-                                          RGBA(1.0f, 0.0f, 0.0f, 1.0f), 40.0f, 1.0f);
+            v2f dP = V2F(0, 0);
             
+            if (OS_KeyHeld(KeyCode_UpArrow))
+            {
+                dP.x = cosf(circle_theta_angle_radians);
+                dP.y = sinf(circle_theta_angle_radians);
+            }
+            
+            if (OS_KeyHeld(KeyCode_DownArrow))
+            {
+                dP.x = -cosf(circle_theta_angle_radians);
+                dP.y = -sinf(circle_theta_angle_radians);
+            }
+            
+            if (OS_KeyHeld(KeyCode_RightArrow))
+            {
+                circle_theta_angle_radians += delta_time;
+            }
+            
+            if (OS_KeyHeld(KeyCode_LeftArrow))
+            {
+                circle_theta_angle_radians -= delta_time;
+            }
+            
+            if (circle_theta_angle_radians >= two_pi_F32)
+            {
+                circle_theta_angle_radians = 0.0f;
+            }
+            else if (circle_theta_angle_radians <= 0.0f)
+            {
+                circle_theta_angle_radians = two_pi_F32;
+            }
+            
+            if (dP.x && dP.y)
+            {
+                dP = V2F_Scale(dP, 0.70710678118f);
+            }
+            
+            circle_p = V2F_Add(V2F_Scale(dP, circle_speed * delta_time), circle_p);
+            
+            //QuadRenderBatch_PushCircleOutline(&quad_render_batch, circle_p, RGBA(1.0f, 0.0f, 0.0f, 1.0f), 10.0f, 1.0f);
+            
+#if 0
             for (f32 gradient_index = 0; gradient_index < 255.0f; gradient_index += 5.0f)
             {
-                RenderBatch_PushRectFilled(&quad_render_batch, V2F(gradient_index, 10.0f), V2F(6.0f, 50.0f),
-                                           RGBA(gradient_index / 255.0f, 0.0f, 0.0f, 1.0f), 0.0f);
+                QuadRenderBatch_PushRectFilled(&quad_render_batch, V2F(gradient_index, 10.0f), V2F(6.0f, 50.0f),
+                                               RGBA(gradient_index / 255.0f, 0.0f, 0.0f, 1.0f), 0.0f);
             }
+#endif
+            
+            RenderBatch_BeginPrimitive(&render_batch, RenderPrimitiveKind_Triangle, False); {
+                RenderBatch_Colour(&render_batch, V4F(1.0f, 0.0f, 0.0f, 1.0f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.50f, viewport.Height * 0.25f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.75f, viewport.Height * 0.75f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.25f, viewport.Height * 0.75f));
+                
+                RenderBatch_Colour(&render_batch, V4F(1.0f, 1.0f, 0.0f, 1.0f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.50f, viewport.Height * 0.35f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.65f, viewport.Height * 0.65f));
+                RenderBatch_Vertex(&render_batch, V2F(viewport.Width * 0.35f, viewport.Height * 0.65f));
+            } RenderBatch_End(&render_batch);
+            
+            RenderBatch_PushCircleOutline(&render_batch, circle_p, RGBA(1.0f, 1.0f, 1.0f, 1.0f), 16.0f);
+            
+            RenderBatch_BeginPrimitive(&render_batch, RenderPrimitiveKind_Line, True); {
+                RenderBatch_Colour(&render_batch, V4F(1.0f, 1.0f, 1.0f, 1.0f));
+                RenderBatch_Vertex(&render_batch, circle_p);
+                RenderBatch_Vertex(&render_batch, V2F(dP.x * circle_speed + circle_p.x, dP.y * circle_speed + circle_p.y));
+            } RenderBatch_End(&render_batch);
             
             if (quad_render_batch.quads_drawn)
             {
@@ -809,23 +989,89 @@ s32 main(void)
                 } break;
             }
             
-            f32 clear_colour[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+            f32 clear_colour[] = { powf(0.0f, 2.2f), powf(0.0f, 2.2f), powf(0.0f, 2.2f), 1.0f };
             
             ID3D11DeviceContext_ClearRenderTargetView(base_device_context, render_target_view, clear_colour);
             
-            ID3D11DeviceContext_IASetPrimitiveTopology(base_device_context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-            
+            //~ NOTE(christian): commons
             ID3D11DeviceContext_VSSetConstantBuffers(base_device_context, 0, 1, &quad_renderer_constants);
-            ID3D11DeviceContext_VSSetShaderResources(base_device_context, 0, 1, &quad_srv);
-            ID3D11DeviceContext_VSSetShader(base_device_context, main_vertex_shader, null, 0);
             
-            ID3D11DeviceContext_RSSetState(base_device_context, (ID3D11RasterizerState *)fill_no_cull_rasterizer_state);
             ID3D11DeviceContext_RSSetViewports(base_device_context, 1, &viewport);
-            
-            ID3D11DeviceContext_PSSetShader(base_device_context, main_pixel_shader, null, 0);
             
             ID3D11DeviceContext_OMSetRenderTargets(base_device_context, 1, &render_target_view, null);
             ID3D11DeviceContext_OMSetBlendState(base_device_context, render_blend_state, null, 0xFFFFFFFF);
+            
+            //~ NOTE(christian): general rendering
+            u32 stride = sizeof(Render_Per_Vertex_Data);
+            u32 offset = 0;
+            ID3D11DeviceContext_IASetInputLayout(base_device_context, render_batch_input_layout);
+            ID3D11DeviceContext_IASetVertexBuffers(base_device_context, 0, 1, &render_batch_vertex_buffer, &stride, &offset);
+            ID3D11DeviceContext_VSSetShader(base_device_context, immediate_vertex_shader, null, 0);
+            
+            ID3D11DeviceContext_PSSetShader(base_device_context, immediate_pixel_shader, null, 0);
+            
+            for (u32 draw_call_index = 0;
+                 draw_call_index < render_batch.draw_call_count;
+                 ++draw_call_index)
+            {
+                Render_Draw_Call *draw_call = render_batch.draw_calls + draw_call_index;
+                //AssertTrue(draw_call->vertex_array_base_index < draw_call->vertex_array_end_index);
+                
+                ID3D11RasterizerState *rasterizer = (ID3D11RasterizerState *)(draw_call->filled ? 
+                                                                              fill_no_cull_rasterizer_state :
+                                                                              wire_no_cull_rasterizer_state);
+                u32 vertices = draw_call->vertex_array_end_index - draw_call->vertex_array_base_index;
+                if (!(draw_call->vertex_array_base_index < draw_call->vertex_array_end_index))
+                {
+                    vertices = 2;
+                }
+                
+                switch (draw_call->primitive_kind)
+                {
+                    // TODO(christian): instead of drawing lines/triangles once, see how much lines/traignles to
+                    // draw currently and send to gpu.
+                    case RenderPrimitiveKind_Line:
+                    {
+                        ID3D11DeviceContext_IASetPrimitiveTopology(base_device_context, D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+                    } break;
+                    
+                    case RenderPrimitiveKind_Triangle:
+                    {
+                        ID3D11DeviceContext_IASetPrimitiveTopology(base_device_context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    } break;
+                    
+                    default:
+                    {
+                        InvalidCodePath();
+                    } break;
+                }
+                
+                switch (ID3D11DeviceContext_Map(base_device_context, (ID3D11Resource *)render_batch_vertex_buffer, 
+                                                0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource))
+                {
+                    case S_OK:
+                    {
+                        MemoryCopy(mapped_subresource.pData, render_batch.vertices + draw_call->vertex_array_base_index,
+                                   sizeof(Render_Per_Vertex_Data) * vertices);
+                        ID3D11DeviceContext_Unmap(base_device_context, (ID3D11Resource *)render_batch_vertex_buffer, 0);
+                    } break;
+                }
+                
+                ID3D11DeviceContext_RSSetState(base_device_context, rasterizer);
+                ID3D11DeviceContext_Draw(base_device_context, vertices, 0);
+            }
+            
+            //~ NOTE(christian): quad rendering
+            ID3D11DeviceContext_IASetPrimitiveTopology(base_device_context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+            ID3D11DeviceContext_IASetInputLayout(base_device_context, null);
+            ID3D11DeviceContext_IASetVertexBuffers(base_device_context, 0, 0, null, null, null);
+            
+            ID3D11DeviceContext_VSSetShaderResources(base_device_context, 0, 1, &quad_srv);
+            ID3D11DeviceContext_VSSetShader(base_device_context, main_vertex_shader, null, 0);
+            
+            ID3D11DeviceContext_PSSetShader(base_device_context, main_pixel_shader, null, 0);
+            
+            ID3D11DeviceContext_RSSetState(base_device_context, (ID3D11RasterizerState *)fill_no_cull_rasterizer_state);
             
             if (quad_render_batch.quads_drawn)
             {
@@ -849,6 +1095,8 @@ s32 main(void)
             }
             
             begin_ticks = end_ticks;
+            
+            render_batch.draw_call_count = 0;
         }
         
         timeEndPeriod(time_caps.wPeriodMin);

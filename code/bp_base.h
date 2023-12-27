@@ -57,6 +57,9 @@ typedef struct String_Const_U32
 # define Assert(c) Stmnt( if(!(c)){ AssertBreak(); } )
 #endif
 
+#define AssertTrue(c) Assert((c)==True)
+#define AssertFalse(c) Assert((c)==False)
+
 #define InvalidCodePath() AssertBreak()
 
 #define MemoryCopy(dest,source,size) memcpy(dest,source,size)
@@ -80,6 +83,9 @@ typedef struct String_Const_U32
 #define True 1
 #define False 0
 
+#define bad_index_u32 0xFFFFFFFF
+
 #include "bp_base_util.h"
+#include "bp_base_math.h"
 
 #endif //BP_BASE_H

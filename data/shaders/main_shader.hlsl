@@ -104,12 +104,17 @@ float4 PSMain(VS_Out input) : SV_Target
 	float softness = 0.8f;
 	float2 softness_padding = float2(softness * 2.0f - 1, softness * 2.0f - 1);
 	float2 half_dim = float2(input.x_axis.x * 0.5f, input.y_axis.y * 0.5f);
-	float signed_dist = RoundedBoxSDF(input.position.xy,
-									  input.origin + half_dim,
-									  half_dim - softness_padding,
-									  input.roundness);
 
-	input.colour *= 1.0f - smoothstep(0.0f, 1.0f, signed_dist);
+	if (input.roundness > 0.0f)
+	{
+		float signed_dist = RoundedBoxSDF(input.position.xy,
+										  input.origin + half_dim,
+										  half_dim - softness_padding,
+										  input.roundness) - 0.25;
+
+		float x = smoothstep(0.0f, softness * 2 - 1.25f, signed_dist);
+		input.colour *= 1.0f - x;
+	}
 
 	if (input.thickness > 0.0f)
 	{
@@ -118,11 +123,12 @@ float4 PSMain(VS_Out input) : SV_Target
 		
 		float reduce_percent_sides = min((reduced_half_dims.x / half_dim.x),
 										 (reduced_half_dims.y / half_dim.y));
-		signed_dist = RoundedBoxSDF(input.position.xy,
-								    input.origin + half_dim,
-									reduced_half_dims - softness_padding,
-									input.roundness * reduce_percent_sides) + 0.25f;
-		input.colour *= smoothstep(0.0f, 1.0f, signed_dist);
+		float signed_dist = RoundedBoxSDF(input.position.xy,
+						 			    input.origin + half_dim,
+						 				reduced_half_dims - softness_padding,
+						 				input.roundness * reduce_percent_sides * reduce_percent_sides) + 0.30f;
+
+		input.colour *= smoothstep(0.0f, softness * 0.05f, signed_dist);
 	}
 
 	return pow(input.colour, 2.2f);

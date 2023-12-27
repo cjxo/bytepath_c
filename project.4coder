@@ -1,0 +1,20 @@
+version(1);
+
+project_name = "Bytepath";
+
+patterns = {
+"*.c",
+"*.h",
+"*.bat",
+"*.hlsl"
+};
+
+blacklist_patterns = {
+".*"
+};
+
+load_paths = {
+	{ { {".", .relative = true, .recursive = true, } }, .os = "win" },
+	{ { {".", .relative = true, .recursive = true, } }, .os = "linux" },
+	{ { {".", .relative = true, .recursive = true, } }, .os = "mac" },
+};
